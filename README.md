@@ -7,7 +7,7 @@ An interactive image adjustment node for ComfyUI, with an easy-to-use graphical 
 - **Author:** Olli Sorjonen
 - **GitHub:** https://github.com/o-l-l-i
 - **X:** https://x.com/Olmirad
-- **Version:** 1.0.0 (Initial release)
+- **Version:** 1.0.1 (Preview updates)
 
 ---
 
