@@ -7,7 +7,7 @@ An interactive image adjustment node for ComfyUI, with an easy-to-use graphical 
 - **Author:** Olli Sorjonen
 - **GitHub:** https://github.com/o-l-l-i
 - **X:** https://x.com/Olmirad
-- **Version:** 1.0.1 (Preview updates)
+- **Version:** 1.0.1.1 (Chain original mouse event handlers to maintain subgraph header button functionality in ComfyUI frontend 1.24.4 and later.)
 
 ---
 
@@ -126,6 +126,14 @@ Functionality, files, and behavior may change without notice, and compatibility 
 Back up your projects frequently. Feedback, bug reports, and suggestions are always welcome - but expect breakage, quirks, and rough edges.
 
 This tool does what I need right now; future updates may be irregular depending on available time.
+
+---
+
+## Version history
+
+- **1.0.1.1** Chain original mouse event handlers to maintain subgraph header button functionality in ComfyUI frontend 1.24.4 and later.
+- **1.0.1** Preview updates.
+- **1.0** Initial release.
 
 ---
 
