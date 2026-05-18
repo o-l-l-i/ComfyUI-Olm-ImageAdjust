@@ -32,7 +32,7 @@ function removeInputs(node, filter) {
       } catch (error) {
         console.warn(
           `[OlmImageAdjust] Node ${node.id}: skipping input removal (graph not ready):`,
-          node.inputs[i].name
+          node.inputs[i].name,
         );
       }
     }
@@ -42,15 +42,68 @@ function removeInputs(node, filter) {
 function hideWidget(widget, extraYOffset = -4) {
   if (widget) {
     widget.hidden = true;
+    widget.type = "hidden";
     widget.computeSize = () => [0, extraYOffset];
   }
+}
+
+function getSlotAreaBottom(node) {
+  const slotHeight = LiteGraph?.NODE_SLOT_HEIGHT ?? 20;
+  let bottom = 0;
+
+  const updateFromSlot = (isInput, index) => {
+    try {
+      const pos = node.getConnectionPos(isInput, index);
+      if (Array.isArray(pos) || ArrayBuffer.isView(pos)) {
+        bottom = Math.max(bottom, pos[1] - node.pos[1] + slotHeight * 0.5);
+      }
+    } catch (error) {}
+  };
+
+  for (let i = 0; i < (node.inputs?.length ?? 0); i++) {
+    updateFromSlot(true, i);
+  }
+
+  for (let i = 0; i < (node.outputs?.length ?? 0); i++) {
+    updateFromSlot(false, i);
+  }
+
+  if (bottom <= 0) {
+    const rows = Math.max(
+      node.inputs?.length ?? 1,
+      node.outputs?.length ?? 1,
+      1,
+    );
+    bottom = (node.constructor?.slot_start_y ?? 0) + rows * slotHeight;
+  }
+
+  return bottom;
+}
+
+function getCustomLayout(node) {
+  const sliderSpacing = 30;
+  const topPadding = 42;
+  const previewGap = 10;
+  const bottomPadding = 20;
+  const slotBottom = getSlotAreaBottom(node);
+  const startY = slotBottom + topPadding;
+  const sliderCount = Object.keys(node.sliders ?? {}).length;
+  const previewY = startY + sliderCount * sliderSpacing + previewGap;
+  const availableHeight = Math.max(0, node.size[1] - previewY - bottomPadding);
+
+  return {
+    sliderSpacing,
+    startY,
+    previewY,
+    previewSize: Math.max(40, Math.min(node.size[0] * 0.95, availableHeight)),
+  };
 }
 
 function initAdjustProperties(node) {
   node.properties = node.properties || {};
   if (!node.properties.adjust_values) {
     node.properties.adjust_values = JSON.parse(
-      JSON.stringify(DEFAULT_ADJUST_VALUES)
+      JSON.stringify(DEFAULT_ADJUST_VALUES),
     );
   }
 }
@@ -64,7 +117,7 @@ function createChannelSlider(
   color,
   gradientColors,
   unit,
-  updateAdjustProperty
+  updateAdjustProperty,
 ) {
   return new ChannelSliderWidget(
     node,
@@ -81,7 +134,7 @@ function createChannelSlider(
       ...(color && { color }),
       ...(gradientColors && { gradientColors }),
       unit,
-    }
+    },
   );
 }
 
@@ -104,20 +157,18 @@ function createPreviewUpdateFunction(node) {
     debounceTimer = setTimeout(() => {
       if (!node.previewCacheKey) {
         console.warn(
-          "[OlmImageAdjust] No cached image available. Please run the node first."
+          "[OlmImageAdjust] No cached image available. Please run the node first.",
         );
         return;
       }
 
       fetch(
-        `/olm/api/imageadjust/update?key=${encodeURIComponent(
-          node.previewCacheKey
-        )}`,
+        `/olm/api/imageadjust/update?key=${encodeURIComponent(node.previewCacheKey)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...node.properties.adjust_values }),
-        }
+        },
       )
         .then((res) => res.json())
         .then((data) => {
@@ -145,7 +196,7 @@ app.registerExtension({
     };
 
     nodeType.prototype.getWidgetValue = function (name, fallback = null) {
-      return this.widgets.find((w) => w.name === name)?.value || fallback;
+      return this.widgets.find((w) => w.name === name)?.value ?? fallback;
     };
 
     nodeType.prototype.setWidgetValue = function (widgetName, val) {
@@ -276,7 +327,7 @@ app.registerExtension({
           config.color,
           config.gradientColors,
           config.unit,
-          updateAdjust
+          updateAdjust,
         );
         this.custom_widgets.push(this.sliders[config.key]);
       });
@@ -284,17 +335,17 @@ app.registerExtension({
       this.addWidget("button", "Reset", "reset", () => {
         if (confirm("Reset all adjustments?")) {
           this.properties.adjust_values = JSON.parse(
-            JSON.stringify(DEFAULT_ADJUST_VALUES)
+            JSON.stringify(DEFAULT_ADJUST_VALUES),
           );
           slidersConfig.forEach((config) => {
             updateHiddenWidget(
               this,
               config.key,
-              this.properties.adjust_values[config.key]
+              this.properties.adjust_values[config.key],
             );
             this.sliders[config.key].setValue(
               this.properties.adjust_values[config.key],
-              true
+              true,
             );
           });
           this.requestPreviewUpdate();
@@ -307,7 +358,7 @@ app.registerExtension({
         slidersConfig.forEach((config) => {
           this.sliders[config.key].setValue(
             this.properties.adjust_values[config.key],
-            true
+            true,
           );
         });
         this.setDirtyCanvas(true, true);
@@ -330,27 +381,21 @@ app.registerExtension({
       if (this.flags.collapsed) return;
 
       ctx.save();
-      const widgetHeight = this.widgets
-        .filter((w) => !w.hidden && typeof w.computeSize === "function")
-        .reduce((acc, w) => acc + w.computeSize([this.size[0]])[1], 0);
-
-      const startY = widgetHeight + 40;
-      const sliderSpacing = 30;
+      const layout = getCustomLayout(this);
 
       Object.values(this.sliders).forEach((slider, i) => {
         slider.width = this.size[0] * 0.85;
         slider.x = this.size[0] / 2.0 - slider.width / 2.0;
-        slider.y = startY + i * sliderSpacing;
+        slider.y = layout.startY + i * layout.sliderSpacing;
         ctx.save();
         ctx.translate(slider.x, slider.y);
         slider.draw(ctx);
         ctx.restore();
       });
 
-      const availableHeight = this.size[1] - 425;
-      const previewSize = Math.min(this.size[0] * 0.95, availableHeight);
+      const previewSize = layout.previewSize;
       const previewCenterX = this.size[0] / 2.0;
-      const y = startY + Object.keys(this.sliders).length * sliderSpacing + 40;
+      const y = layout.previewY;
 
       if (this._previewImage && this._previewImage.complete) {
         const img = this._previewImage;
@@ -384,12 +429,12 @@ app.registerExtension({
         ctx.fillText(
           "Run the graph once to generate preview.",
           previewCenterX,
-          y + previewSize / 2 - 10
+          y + previewSize / 2 - 10,
         );
         ctx.fillText(
           "Note: requires output connection to function.",
           previewCenterX,
-          y + previewSize / 2 + 10
+          y + previewSize / 2 + 10,
         );
         ctx.restore();
       }
@@ -423,7 +468,7 @@ app.registerExtension({
           this,
           event,
           localPos,
-          graphCanvas
+          graphCanvas,
         );
         if (wasHandled) return true;
         return dispatch("onMouseDown", event, localPos);
@@ -434,7 +479,7 @@ app.registerExtension({
           this,
           event,
           localPos,
-          graphCanvas
+          graphCanvas,
         );
         if (wasHandled) return true;
         return dispatch("onMouseMove", event, localPos);
@@ -445,7 +490,7 @@ app.registerExtension({
           this,
           event,
           localPos,
-          graphCanvas
+          graphCanvas,
         );
         if (wasHandled) return true;
         return dispatch("onMouseUp", event, localPos);
@@ -456,7 +501,7 @@ app.registerExtension({
           this,
           event,
           localPos,
-          graphCanvas
+          graphCanvas,
         );
         if (wasHandled) return true;
 
@@ -488,15 +533,12 @@ app.registerExtension({
         });
       }
       removeInputs(this, (input) => input.type === "STRING");
-
       this.forceUpdate();
-
       this.setDirtyCanvas(true, true);
     };
 
     nodeType.prototype.onAdded = function () {
       patchNodeMouseHandlers(this);
-
       removeInputs(this, (input) => input.type === "STRING");
     };
 
